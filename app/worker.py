@@ -6,7 +6,7 @@ import time
 import cv2
 
 from . import features as feat
-from .detector import HandDetector, draw_hand
+from .detector import HandTracker, draw_hand
 from .engine import Engine
 
 
@@ -20,6 +20,8 @@ class Worker(threading.Thread):
         self.frame_w, self.frame_h = frame_size
         self._stop = threading.Event()
         self._lock = threading.Lock()
+        # Started here, on the main thread: a spawned process is unreliable from run().
+        self.tracker = HandTracker()
         self._state = {"frame": None, "raw_frame": None, "features": None,
                        "active": None, "candidate": None, "fps": 0.0, "error": None}
 
@@ -36,20 +38,16 @@ class Worker(threading.Thread):
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.frame_h)
         if not cap.isOpened():
             self._publish(error=f"Could not open camera {self.camera_index}")
+            self.tracker.close()
             return
-        try:
-            detector = HandDetector()
-        except Exception as e:
-            self._publish(error=f"Hand detector failed to start: {e}")
-            cap.release()
-            return
+        detector = self.tracker
 
         prev = time.monotonic()
         margin = self.engine.margin
         try:
             while not self._stop.is_set():
                 ok, frame = cap.read()
-                if not ok:
+                if not ok or frame is None or frame.size == 0:
                     self._publish(error="Camera read failed")
                     time.sleep(0.1)
                     continue
@@ -86,7 +84,7 @@ class Worker(threading.Thread):
         finally:
             with self.engine_lock:
                 self.engine.release()
-            detector.close()
+            self.tracker.close()
             cap.release()
 
     def _publish(self, **kv):

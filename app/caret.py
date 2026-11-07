@@ -43,9 +43,70 @@ def focused_text_field(retry=True):
     if el is None and retry:
         time.sleep(0.15)
         el = _attr(AS, app_el, "AXFocusedUIElement")
-    if el is None or not _is_editable(AS, el):
+    if el is None:
         return None
-    return el, _caret_rect(AS, el)
+    # Google Docs keeps keyboard focus on a hidden field and draws the caret on
+    # the page. The page is the surface the click actually landed in.
+    editable = _editable_ancestor(AS, el)
+    if editable is not None:
+        return editable, _caret_rect(AS, editable)
+    host = _document_host(AS, el)
+    if host is not None:
+        return host, FIELD_WITHOUT_POSITION
+    return None
+
+
+def document_frame(el):
+    """On-screen rect of the Google Docs page that contains `el`, or None.
+
+    Docs (and the same editor on other browsers) does not put the visible caret
+    on the focused control. The control is a hidden field; the page under the
+    click is the document.
+    """
+    if el is None or sys.platform != "darwin":
+        return None
+    try:
+        import ApplicationServices as AS
+    except Exception:
+        return None
+    host = _document_host(AS, el)
+    if host is None:
+        return None
+    frame = _frame(AS, host)
+    if frame is None:
+        return None
+    # A browser window includes the tab strip and address bar. The document
+    # starts below them; a click up there is not the Docs caret.
+    if _attr(AS, host, "AXRole") == "AXWindow":
+        x, y, w, h = frame
+        chrome = 100
+        if h <= chrome + 80:
+            return None
+        return (x, y + chrome, w, h - chrome)
+    return frame
+
+
+def field_frame(el):
+    """Screen rect (x, y, w, h) of a text field, or None if it will not say.
+
+    Same top-left point space as the caret rect. Used to tell a click in the
+    field from a click somewhere else while the field still has focus.
+    """
+    if el is None or sys.platform != "darwin":
+        return None
+    try:
+        import ApplicationServices as AS
+    except Exception:
+        return None
+    pos, size = _attr(AS, el, "AXPosition"), _attr(AS, el, "AXSize")
+    if pos is None or size is None:
+        return None
+    ok_p, (x, y) = AS.AXValueGetValue(pos, AS.kAXValueCGPointType, None)
+    ok_s, (w, h) = AS.AXValueGetValue(size, AS.kAXValueCGSizeType, None)
+    if not (ok_p and ok_s) or w < 1 or h < 1:
+        return None
+    rect = (x, y, w, h)
+    return rect if _on_screen((x, y, 2, max(h, MIN_LINE_HEIGHT))) else None
 
 
 def text_length(el):
@@ -106,6 +167,81 @@ def _is_editable(AS, el):
         return True
     err, settable = AS.AXUIElementIsAttributeSettable(el, "AXValue", None)
     return err == 0 and bool(settable) and _attr(AS, el, "AXSelectedTextRange") is not None
+
+
+def _editable_ancestor(AS, el):
+    cur = el
+    for _ in range(10):
+        if cur is None:
+            return None
+        if _attr(AS, cur, "AXRole") == "AXWebArea":
+            return None
+        if _is_editable(AS, cur):
+            return cur
+        cur = _attr(AS, cur, "AXParent")
+    return None
+
+
+def is_text_control(el):
+    """True for a real text field, not a web page that merely contains one."""
+    if el is None or sys.platform != "darwin":
+        return False
+    try:
+        import ApplicationServices as AS
+    except Exception:
+        return False
+    return _attr(AS, el, "AXRole") in TEXT_ROLES
+
+
+def _document_host(AS, el):
+    """The web page element when `el` lives in a Google Docs document.
+
+    The parent chain from Docs' hidden text field sometimes never reaches the
+    page, so the window title is checked too.
+    """
+    cur, web, window, is_doc, other_page = el, None, None, False, False
+    for _ in range(16):
+        if cur is None:
+            break
+        role = _attr(AS, cur, "AXRole")
+        url = _text(AS, cur, "AXURL").lower()
+        classes = (_text(AS, cur, "AXDOMClassList") + _text(AS, cur, "AXDOMIdentifier")).lower()
+        if "docs.google.com" in url or "kix-" in classes:
+            is_doc = True
+        if role == "AXWebArea":
+            web = cur
+            if url and "docs.google.com" not in url:
+                other_page = True
+        if role == "AXWindow":
+            window = cur
+            if not other_page and "google docs" in _text(AS, cur, "AXTitle").lower():
+                is_doc = True
+        cur = _attr(AS, cur, "AXParent")
+    if not is_doc:
+        # Focus can sit in an iframe whose parents stop before the window.
+        top = _attr(AS, el, "AXWindow") or _attr(AS, el, "AXTopLevelUIElement")
+        if top is not None and "google docs" in _text(AS, top, "AXTitle").lower():
+            return top
+        return None
+    return web or window
+
+
+def _text(AS, el, name):
+    value = _attr(AS, el, name)
+    return "" if value is None else str(value)
+
+
+def _frame(AS, el):
+    pos, size = _attr(AS, el, "AXPosition"), _attr(AS, el, "AXSize")
+    if pos is None or size is None:
+        return None
+    ok_p, (x, y) = AS.AXValueGetValue(pos, AS.kAXValueCGPointType, None)
+    ok_s, (w, h) = AS.AXValueGetValue(size, AS.kAXValueCGSizeType, None)
+    if not (ok_p and ok_s) or w < 1 or h < 1:
+        return None
+    if not _on_screen((x, y, 2, max(h, MIN_LINE_HEIGHT))):
+        return None
+    return (x, y, w, h)
 
 
 def _bounds_for_range(AS, el, rng):
