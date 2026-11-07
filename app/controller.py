@@ -23,7 +23,7 @@ class Controller:
         self.engine.set_profile(self.profile)
 
         self.paused = False
-        self.camera_visible = bool(self.store.get_setting("camera_visible", True))
+        self.camera_visible = False   # always starts hidden; the switch shows it for this session
         self.magnifier_on = bool(self.store.get_setting("magnifier", True))
         self.hover_lock = bool(self.store.get_setting("hover_lock", True))
         self.engine.hover_lock = self.hover_lock
@@ -119,7 +119,6 @@ class Controller:
     # camera view and magnifier
     def set_camera_visible(self, visible: bool):
         self.camera_visible = visible
-        self.store.set_setting("camera_visible", visible)
         self._notify("camera")
 
     def toggle_camera(self):

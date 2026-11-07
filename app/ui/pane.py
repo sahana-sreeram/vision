@@ -14,21 +14,21 @@ PANE_WIDTH = 250   # logical pixels; scaled for the display's DPI at runtime
 ICON = 52
 POLL_MS = 100
 
-BG = "#f3f4f7"
+# Same purples as the dictation microphone bubble.
+BG = "#F4EEFB"
 CARD = "#ffffff"
-BORDER = "#e2e4e9"
-TILE = "#f1f2f6"
-TEXT = "#1d1f24"
-MUTED = "#6b7080"
-FAINT = "#a3a8b5"
-GREEN = "#34c759"
-GREEN_DARK = "#1f8a3c"
-GREEN_SOFT = "#e6f8ea"
-AMBER = "#f5a623"
-AMBER_SOFT = "#fff5e0"
+BORDER = "#E2D5F3"
+TILE = "#EFE6FA"
+TEXT = "#2A1454"
+MUTED = "#6B5B8A"
+FAINT = "#A596C2"
+PURPLE = "#4C1D95"
+PURPLE_SOFT = "#E7D8F6"
+VIOLET = "#A78BFA"
+VIOLET_SOFT = "#F5F0FD"
 RED = "#d9534f"
-GREY = "#c9ccd4"
-SCROLL = "#aeb3bf"
+GREY = "#D4CBE3"
+SCROLL = "#C4B5E0"
 
 FONT = "Segoe UI"
 
@@ -75,7 +75,7 @@ class Pane(tk.Tk):
         st.map("Pane.Vertical.TScrollbar", background=[("active", MUTED)])
         st.configure("Link.TButton", background=BG, foreground=MUTED, bordercolor=BG, focuscolor=BG,
                      relief="flat", padding=(4, 2), font=(FONT, 8))
-        st.map("Link.TButton", foreground=[("active", TEXT)], background=[("active", BG)])
+        st.map("Link.TButton", foreground=[("active", PURPLE)], background=[("active", BG)])
 
     def _pad(self, n):
         return int(n * self.scale)
@@ -260,8 +260,8 @@ class Pane(tk.Tk):
             state = "active" if action_id == active else "candidate" if action_id == candidate else None
             if state != row["state"]:
                 row["state"] = state
-                bg = GREEN_SOFT if state == "active" else AMBER_SOFT if state == "candidate" else CARD
-                accent = GREEN if state == "active" else AMBER if state == "candidate" else CARD
+                bg = PURPLE_SOFT if state == "active" else VIOLET_SOFT if state == "candidate" else CARD
+                accent = PURPLE if state == "active" else VIOLET if state == "candidate" else CARD
                 _set_bg(row["inner"], bg)
                 row["accent"].configure(bg=accent)
         if s["error"]:
@@ -329,13 +329,13 @@ class ToggleSwitch(tk.Canvas):
     def _draw(self):
         self.delete("all")
         w, h, r = self.w, self.h, self.h / 2
-        color = GREEN if self.on else GREY
+        color = PURPLE if self.on else GREY
         self.create_oval(0, 0, h, h, fill=color, outline=color)
         self.create_oval(w - h, 0, w, h, fill=color, outline=color)
         self.create_rectangle(r, 0, w - r, h, fill=color, outline=color)
         pad = max(2, int(2 * self.h / 26))
         x = w - h + pad if self.on else pad
-        self.create_oval(x, pad, x + h - 2 * pad, h - pad, fill="white", outline="#e6e6e6")
+        self.create_oval(x, pad, x + h - 2 * pad, h - pad, fill="white", outline=BORDER)
 
 
 def _set_bg(widget, bg):

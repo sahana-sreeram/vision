@@ -14,6 +14,7 @@ POLL_MS = 33
 class CameraWindow(tk.Toplevel):
     def __init__(self, master, controller):
         super().__init__(master)
+        self.withdraw()
         self.c = controller
         self.title("Camera")
         self.resizable(False, False)

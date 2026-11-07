@@ -17,14 +17,15 @@ SAMPLE_MS = 50
 PREVIEW = 128
 CUSTOM = "Custom (recorded)"
 
-BG = "#f3f4f7"
+# Same purples as the side pane and the dictation microphone bubble.
+BG = "#F4EEFB"
 CARD = "#ffffff"
-BORDER = "#e2e4e9"
-TEXT = "#1d1f24"
-MUTED = "#6b7080"
-FAINT = "#a3a8b5"
-GREEN = "#34c759"
-GREEN_DARK = "#1f8a3c"
+BORDER = "#E2D5F3"
+TEXT = "#2A1454"
+MUTED = "#6B5B8A"
+FAINT = "#A596C2"
+PURPLE = "#4C1D95"
+PURPLE_DARK = "#3B1578"
 RED = "#d9534f"
 FONT = "Segoe UI"
 
@@ -57,9 +58,9 @@ class MappingEditor(tk.Toplevel):
 
     def _style(self):
         st = ttk.Style(self)
-        st.configure("Accent.TButton", background=GREEN, foreground="white", bordercolor=GREEN,
-                     focuscolor=GREEN, padding=(12, 5), font=(FONT, 9, "bold"))
-        st.map("Accent.TButton", background=[("active", GREEN_DARK)], bordercolor=[("active", GREEN_DARK)])
+        st.configure("Accent.TButton", background=PURPLE, foreground="white", bordercolor=PURPLE,
+                     focuscolor=PURPLE, padding=(12, 5), font=(FONT, 9, "bold"))
+        st.map("Accent.TButton", background=[("active", PURPLE_DARK)], bordercolor=[("active", PURPLE_DARK)])
         st.configure("Quiet.TButton", background=CARD, foreground=TEXT, bordercolor=BORDER,
                      focuscolor=CARD, padding=(12, 5), font=(FONT, 9))
         st.map("Quiet.TButton", background=[("active", BG)])
@@ -197,7 +198,7 @@ class MappingEditor(tk.Toplevel):
             left = max(0.0, RECORD_S - rec)
             self.record_status.configure(
                 text=f"Recording, hold the pose...  {left:.0f}s" if pose else "Recording, no hand in view",
-                fg=GREEN_DARK if pose else RED)
+                fg=PURPLE_DARK if pose else RED)
             self._draw_progress(min(1.0, rec / RECORD_S))
             if rec >= RECORD_S:
                 self._finish_record()
@@ -223,7 +224,7 @@ class MappingEditor(tk.Toplevel):
         if steady < 0.6:
             msg = "Captured, but the pose kept changing. Record again if this is not what you meant."
         self._stop_record(msg)
-        self.record_status.configure(fg=GREEN_DARK if steady >= 0.6 else RED)
+        self.record_status.configure(fg=PURPLE_DARK if steady >= 0.6 else RED)
 
     def _show_live(self, pose):
         if pose is None:
@@ -238,7 +239,7 @@ class MappingEditor(tk.Toplevel):
     def _draw_progress(self, frac):
         self.progress.delete("all")
         w = self.progress.winfo_width() or int(260 * self.scale)
-        self.progress.create_rectangle(0, 0, w * frac, self._p(6), fill=GREEN, outline=GREEN)
+        self.progress.create_rectangle(0, 0, w * frac, self._p(6), fill=PURPLE, outline=PURPLE)
 
     # save / clear
     def _save(self):
