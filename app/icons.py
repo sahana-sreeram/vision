@@ -1,12 +1,10 @@
-"""Renders a hand diagram for any Gesture, or loads a recorded snapshot for a mapping."""
+"""Renders a hand diagram for any Gesture."""
 
-from pathlib import Path
 
 from PIL import Image, ImageDraw
 
 from .gestures import Gesture
 from .handmodel import BONES, FINGER_JOINTS, FINGER_ORDER, ROTATION_DEG, model_points, rotate
-from .profiles import ROOT
 
 EXTENDED = (46, 160, 67)      # green
 CURLED = (120, 120, 120)
@@ -95,42 +93,7 @@ def _arrow(d, S, orientation, width):
 
 
 def icon_for(mapping, size: int = 96) -> Image.Image:
-    """Recorded snapshot if the mapping has one, otherwise a rendered diagram."""
-    if mapping.image:
-        path = ROOT / mapping.image
-        if path.exists():
-            try:
-                img = Image.open(path).convert("RGBA")
-                return _square(img, size)
-            except OSError:
-                pass
     return render(mapping.gesture, size)
-
-
-def _square(img: Image.Image, size: int) -> Image.Image:
-    w, h = img.size
-    side = min(w, h)
-    left, top = (w - side) // 2, (h - side) // 2
-    return img.crop((left, top, left + side, top + side)).resize((size, size), Image.LANCZOS)
-
-
-def save_snapshot(frame_bgr, bbox, dest: Path, margin_ratio=0.35) -> None:
-    """Crop the hand region of a BGR frame and save it as a PNG."""
-    import cv2
-    x0, y0, x1, y1 = bbox
-    side = max(x1 - x0, y1 - y0) * (1 + margin_ratio)
-    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
-    h, w = frame_bgr.shape[:2]
-    l = int(max(0, cx - side / 2))
-    t = int(max(0, cy - side / 2))
-    r = int(min(w, cx + side / 2))
-    b = int(min(h, cy + side / 2))
-    crop = frame_bgr[t:b, l:r]
-    if crop.size == 0:
-        return
-    rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    _square(Image.fromarray(rgb), 160).save(dest)
 
 
 def tray_image(size: int = 64) -> Image.Image:

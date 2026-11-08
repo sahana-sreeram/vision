@@ -31,6 +31,8 @@ GREY = "#D4CBE3"
 SCROLL = "#C4B5E0"
 
 FONT = "Segoe UI"
+CLICKABLE_CLASSES = {"Button", "TButton", "TCombobox", "Checkbutton", "TCheckbutton",
+                     "Radiobutton", "TRadiobutton"}
 
 
 class Pane(tk.Tk):
@@ -96,6 +98,7 @@ class Pane(tk.Tk):
         if not first:
             tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", padx=self._pad(12))
         row = tk.Frame(parent, bg=CARD, padx=self._pad(12), pady=self._pad(7), cursor="hand2")
+        row.magnet = True
         row.pack(fill="x")
         label = tk.Label(row, text=title, bg=CARD, fg=TEXT, anchor="w", font=(FONT, 10))
         label.pack(side="left", fill="x", expand=True)
@@ -214,6 +217,7 @@ class Pane(tk.Tk):
                          wraplength=wrap, font=(FONT, 8)).pack(fill="x")
             for w in (inner, accent, content, icon, text, *text.winfo_children()):
                 w.bind("<Button-1>", lambda e, a=action.id: self._edit(a))
+            inner.magnet = True
             self._rows[action.id] = {"inner": inner, "accent": accent, "state": None}
         if unassigned:
             ttk.Button(self.rows_frame, text=label, style="Link.TButton",
@@ -268,7 +272,23 @@ class Pane(tk.Tk):
             self.status.configure(text=s["error"])
         else:
             self.status.configure(text="")
+        self.c.backend.set_own_targets(self._click_targets())
         self.after(POLL_MS, self._poll)
+
+    def _click_targets(self):
+        """Screen rects of everything clickable in this app's windows, for the magnetic cursor."""
+        rects = []
+        stack = [self]
+        while stack:
+            w = stack.pop()
+            try:
+                children = w.winfo_children()
+                if (getattr(w, "magnet", False) or w.winfo_class() in CLICKABLE_CLASSES) and w.winfo_viewable():
+                    rects.append((w.winfo_rootx(), w.winfo_rooty(), w.winfo_width(), w.winfo_height()))
+            except tk.TclError:
+                continue
+            stack.extend(children)
+        return rects
 
 
 class ChevronBar(tk.Canvas):
@@ -281,6 +301,7 @@ class ChevronBar(tk.Canvas):
         self.command = command
         self.up = True
         self.hover = False
+        self.magnet = True
         self.bind("<Button-1>", lambda e: self.command and self.command())
         self.bind("<Enter>", lambda e: self._set_hover(True))
         self.bind("<Leave>", lambda e: self._set_hover(False))
@@ -318,6 +339,7 @@ class ToggleSwitch(tk.Canvas):
                          cursor="hand2", **kw)
         self.command = command
         self.on = True
+        self.magnet = True
         self.bind("<Button-1>", lambda e: self.command and self.command())
         self._draw()
 

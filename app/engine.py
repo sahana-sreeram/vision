@@ -13,8 +13,8 @@ LOST_TIMEOUT = 0.3    # seconds without a hand before held buttons are released
 DRAG_DEADZONE_PX = 40  # knuckle travel (screen px) while a button is held before a drag starts
 HOVER_BREAK_PX = 32    # knuckle movement needed to leave a locked position
 APPROACH_GAP = 0.65    # thumb-index gap (hand sizes) below which a pinch may be starting
-APPROACH_DROP = 0.10   # gap must have shrunk by this much within APPROACH_WINDOW to count
-APPROACH_WINDOW = 0.15 # seconds
+APPROACH_DROP = 0.12   # gap must have shrunk by this much within APPROACH_WINDOW to count
+APPROACH_WINDOW = 0.45 # seconds; long enough to catch a slow, deliberate pinch
 CURL_SPEED = 3.5       # fingertip speed relative to the knuckle (hand sizes / s) that means "clicking"
 REWIND_S = 0.15        # when a click starts, put the cursor back where it was this long ago
 TRAIL_S = 0.5          # how much cursor history to keep for the rewind
@@ -27,7 +27,9 @@ HOLD_ACTIONS = {"move_window", "drag"}   # kept through brief detection dropouts
 RELEASE_GRACE_S = 0.3                    # how long a hold survives without its gesture
 DAMP_S = 0.4           # after a click starts, use heavy smoothing for this long (One Euro is too eager)
 HOVER_RADIUS_PX = 18   # target wobble treated as "holding still" (hover lock)
-HOVER_MS = 450         # how long still before the cursor locks in place (hover lock)
+MAGNET_POLL_S = 0.1    # how often to ask what button-like control is under the finger
+MAGNET_MARGIN_PX = 20  # the finger must leave a snapped control by this much to let go
+HOVER_MS = 350         # how long still before the cursor locks in place (hover lock)
 
 
 class Engine:
@@ -70,6 +72,9 @@ class Engine:
         self._press_cursor = None
         self._drag_started = False
         self._gap_history = []      # recent (time, fingertip gaps); a click needs a snap in here
+        self._approach_t = None     # when the gap that is now closing was last fully open
+        self._magnet = None         # screen rect of the control the cursor is snapped onto
+        self._magnet_polled = -1.0
         self._trail = []            # recent (time, x, y) cursor positions, for the rewind
         self._last_tip = None       # (time, fingertip offset from knuckle) from the previous frame
         self._lock_knuckle = None   # knuckle screen position when the lock was taken
@@ -268,15 +273,28 @@ class Engine:
                     curling = True                      # already frozen: stay frozen while moving
         self._last_tip = (now, offset)
 
-        recent = [g[0] for t, g in self._gap_history if now - t <= APPROACH_WINDOW]
-        closing = (f.pinch_gap < APPROACH_GAP and recent
-                   and max(recent) - f.pinch_gap >= APPROACH_DROP)
+        # Any fingertip closing on the thumb, fast or slow, is a pinch starting. Remember
+        # when that gap was last open so the cursor can be put back to before the drift.
+        closing = False
+        self._approach_t = None
+        window = [(t, g) for t, g in self._gap_history if now - t <= APPROACH_WINDOW]
+        current = (f.pinch_gap,) + tuple(f.gaps[1:])
+        for i, gap in enumerate(current):
+            series = [(t, g[i]) for t, g in window if len(g) > i]
+            if not series or gap >= APPROACH_GAP:
+                continue
+            peak = max(gs for _, gs in series)
+            if peak - gap >= APPROACH_DROP:
+                closing = True
+                self._approach_t = max(t for t, gs in series if gs == peak)
+                break
         if curling or closing:
             return True
         return "pending" if self._curl_pending is not None else False
 
     def _clear_lock(self):
         self._lock = None
+        self._magnet = None
         self._lock_knuckle = None
         self._curl_pending = None
         self._ease = None
@@ -298,10 +316,14 @@ class Engine:
         if clicking:
             self._damp_until = now + DAMP_S
             if self._lock is None:
-                # Measured from when the motion was first seen, not from the confirmation.
-                seen = self._click_seen if self._click_seen is not None else now
-                self._rewind(seen - REWIND_S)
-                self._take_lock(f)
+                if self._magnet is None:
+                    # Measured from when the motion was first seen, not from the confirmation.
+                    seen = self._click_seen if self._click_seen is not None else now
+                    when = seen - REWIND_S
+                    if self._approach_t is not None:
+                        when = min(when, self._approach_t)   # a slow pinch drifted for longer
+                    self._rewind(when)
+                self._take_lock(f)   # already sitting on a snapped control: lock right there
             self._click_seen = None
             return
 
@@ -311,14 +333,29 @@ class Engine:
             if _dist(self._to_screen(f.knuckle), self._lock_knuckle) < HOVER_BREAK_PX:
                 return
             self._lock = None
-            if self.adaptive.enabled:
-                # One Euro would close the gap to the finger in a single frame. Track the
-                # finger from here and fade the remaining gap out over EASE_S instead.
-                self.filter_x.reset(target[0], now)
-                self.filter_y.reset(target[1], now)
-                # Timed from the previous frame so this frame already moves part of the way.
-                start = max(self._prev_seen, now - EASE_S)
-                self._ease = (start, self._prev_x - target[0], self._prev_y - target[1])
+            self._magnet = None
+            self._resume_tracking(target, now)
+
+        # Magnetic controls: over a button, switch or link, the cursor sits on its
+        # centre until the finger clearly leaves it. Small targets stop being hard.
+        finger = self._mirror(target)
+        if self._magnet is not None:
+            if _inside(self._magnet, finger, MAGNET_MARGIN_PX):
+                return
+            self._magnet = None
+            self._resume_tracking(target, now)
+        elif now - self._magnet_polled >= MAGNET_POLL_S - 1e-6:
+            self._magnet_polled = now
+            rect = self.backend.target_at(*finger)
+            if rect is not None:
+                self._magnet = rect
+                x, y = self.screen_w - (rect[0] + rect[2] / 2), rect[1] + rect[3] / 2
+                self.filter_x.reset(x, now)
+                self.filter_y.reset(y, now)
+                self._emit(x, y)
+                self._trail = []        # a click here must not rewind to before the snap
+                self._still_ref = None
+                return
 
         # Hover lock (optional): after holding still briefly, ignore small drift.
         if self.hover_lock:
@@ -329,6 +366,22 @@ class Engine:
                 return
 
         self._glide_to(target)
+
+    def _resume_tracking(self, target, now):
+        """Leaving a lock: track the finger from here without a leap."""
+        if self.adaptive.enabled:
+            # One Euro would close the gap to the finger in a single frame. Track the
+            # finger from here and fade the remaining gap out over EASE_S instead.
+            self.filter_x.reset(target[0], now)
+            self.filter_y.reset(target[1], now)
+            # Timed from the previous frame so this frame already moves part of the way.
+            start = max(self._prev_seen, now - EASE_S)
+            self._ease = (start, self._prev_x - target[0], self._prev_y - target[1])
+
+    def _mirror(self, p):
+        """Engine coordinates to screen coordinates (the camera is mirrored)."""
+        return (min(max(self.screen_w - p[0], 0), self.screen_w - 1),
+                min(max(p[1], 0), self.screen_h - 1))
 
     def _drag_cursor(self, f: HandFeatures):
         """While a button is held, move by how far the knuckle travelled since the press."""
@@ -398,13 +451,21 @@ class Engine:
 
     def _remember_gaps(self, f: HandFeatures, now: float):
         self._gap_history.append((now, f.gaps))
-        self._gap_history = [(t, g) for t, g in self._gap_history if now - t <= SNAP_WINDOW]
+        keep = max(SNAP_WINDOW, APPROACH_WINDOW)
+        self._gap_history = [(t, g) for t, g in self._gap_history if now - t <= keep]
 
     def _snapped(self, finger: str) -> bool:
-        recent = [g[PINCH_FINGERS.index(finger)] for _, g in self._gap_history]
+        now = self._gap_history[-1][0] if self._gap_history else 0.0
+        recent = [g[PINCH_FINGERS.index(finger)] for t, g in self._gap_history
+                  if now - t <= SNAP_WINDOW]
         if len(recent) < 2:
             return False
         return max(recent) - recent[-1] >= SNAP_DROP
+
+
+def _inside(rect, p, pad=0):
+    x, y, w, h = rect
+    return x - pad <= p[0] < x + w + pad and y - pad <= p[1] < y + h + pad
 
 
 def _dist(a, b):

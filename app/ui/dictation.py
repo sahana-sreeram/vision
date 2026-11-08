@@ -16,7 +16,7 @@ import tkinter as tk
 from tkinter import font as tkfont
 
 from ..caret import (FIELD_WITHOUT_POSITION, document_frame, field_frame, focused_text_field,
-                     is_text_control, text_length)
+                     is_text_control, same_element, text_length)
 
 TICK_MS = 100
 WATCH_MS = 250            # how often to check which text field has focus
@@ -30,12 +30,14 @@ NEAR_POINTER = 64         # caret this close to the click is the one that click 
 TAIL_W, TAIL_H = 16, 8
 TOP_MARGIN = 46           # clears the menu bar
 
-CLEAR = "systemTransparent"
+# Windows has no transparent colour; a key colour is made see-through with -transparentcolor.
+CLEAR = "systemTransparent" if sys.platform == "darwin" else "#010203"
 PURPLE = "#4C1D95"          # dark purple: bubble stroke, microphone, label, Stop
 PURPLE_HOVER = "#3B1578"
 FILL = "#F4EEFB"            # pale purple, the light interior of the reference icon
 FILL_HOVER = "#E7D8F6"
 BUBBLE_R = 40               # circle radius; the whole bubble is the click target
+HAND_CURSOR = "pointinghand" if sys.platform == "darwin" else "hand2"
 BUBBLE_STROKE = 3
 BAR_H = 68
 BAR_STROKE = 3
@@ -94,7 +96,7 @@ class PillButton:
         tag = f"button{id(self)}"
         self.shape = round_rect(canvas, x, y, x + w, y + h, h / 2, fill=bg, tags=(tag,))
         canvas.create_text(x + w / 2, y + h / 2, text=text, fill=fg, font=font, tags=(tag,))
-        canvas.tag_bind(tag, "<Enter>", lambda e: self._hover(hover, "pointinghand"))
+        canvas.tag_bind(tag, "<Enter>", lambda e: self._hover(hover, HAND_CURSOR))
         canvas.tag_bind(tag, "<Leave>", lambda e: self._hover(bg, ""))
         canvas.tag_bind(tag, "<ButtonRelease-1>", lambda e: command())
 
@@ -113,6 +115,8 @@ class Floating(tk.Toplevel):
         self.attributes("-topmost", True)
         if sys.platform == "darwin":
             self.attributes("-transparent", True)
+        elif sys.platform == "win32":
+            self.attributes("-transparentcolor", CLEAR)
         # wm geometry rejects decimals ("120x122.08+…"), which left this window at its
         # default spot instead of beside the caret.
         self.width, self.height = int(math.ceil(width)), int(math.ceil(height))
@@ -127,6 +131,7 @@ class Floating(tk.Toplevel):
         y = int(min(max(TOP_MARGIN - 16, y), sh - self.height - 8))
         self.geometry(f"{int(self.width)}x{int(self.height)}+{x}+{y}")
         _float_above_apps(self)
+        _never_take_focus(self)
         return x, y
 
 
@@ -244,6 +249,7 @@ class MicBubble(Floating):
         super().__init__(master, "Start speech-to-text", layout["w"], layout["h"])
         self._layout = paint_bubble(self.canvas, 0, 0, layout["flip_x"], layout["flip_y"])
         self._on_start = on_start
+        self.canvas.magnet = True      # the gesture cursor snaps onto the bubble
         self._armed_at = time.monotonic() + ARM_DELAY
         self.canvas.tag_bind("hit", "<Enter>", lambda e: self._hover(True))
         self.canvas.tag_bind("hit", "<Leave>", lambda e: self._hover(False))
@@ -268,7 +274,7 @@ class MicBubble(Floating):
 
     def _hover(self, on):
         self.canvas.itemconfigure("bubble-fill", fill=FILL_HOVER if on else FILL)
-        self.canvas.configure(cursor="pointinghand" if on else "")
+        self.canvas.configure(cursor=HAND_CURSOR if on else "")
 
 
 def _place_bubble(aim_x, aim_y, sw, sh):
@@ -336,6 +342,8 @@ class DictationUI:
         self._shown_click = None   # click the open bubble was placed for
         self._ignore_clicks_until = 0.0
         self._watch_job = None
+        if sys.platform == "win32":
+            _watch_clicks_windows()
         root.after(TICK_MS, self._tick)
         root.after(CLICK_POLL_MS, self._poll_clicks)
         self._schedule_watch(WATCH_MS)
@@ -401,11 +409,11 @@ class DictationUI:
             elif self.card is not None and clicked and anchor is None:
                 self._close_card()
             elif self.card is not None and anchor is not None and (
-                    moved or element != self._card_field):
+                    moved or not same_element(element, self._card_field)):
                 self._close_card()
                 self._target_app = _frontmost_app()
                 self._open_card(element, anchor)
-            elif self.card is not None and element != self._card_field:
+            elif self.card is not None and not same_element(element, self._card_field):
                 self._close_card()
             if (self.card is None and not typed and anchor is not None and self._watching
                     and not self.c.paused and element is not None):
@@ -502,8 +510,27 @@ def _float_above_apps(win):
         pass
 
 
+def _never_take_focus(win):
+    """Windows: keep keyboard focus in the app being dictated into when this window appears."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        win.update_idletasks()
+        u = ctypes.windll.user32
+        hwnd = u.GetParent(win.winfo_id()) or win.winfo_id()
+        GWL_EXSTYLE, WS_EX_NOACTIVATE = -20, 0x08000000
+        u.SetWindowLongW(hwnd, GWL_EXSTYLE, u.GetWindowLongW(hwnd, GWL_EXSTYLE) | WS_EX_NOACTIVATE)
+    except Exception:
+        pass
+
+
 def _frontmost_app():
-    """The app that had keyboard focus before the card opened (macOS only)."""
+    """The app that had keyboard focus before the card opened."""
+    if sys.platform == "win32":
+        from ..caret_win import foreground_window
+        hwnd, pid = foreground_window()
+        return hwnd if hwnd and pid != os.getpid() else None
     if sys.platform != "darwin":
         return None
     try:
@@ -516,9 +543,26 @@ def _frontmost_app():
     return app
 
 
+_win_clicks = 0
+
+
+def _watch_clicks_windows():
+    """Count left-button releases system-wide with a low-level mouse hook (pynput)."""
+    from pynput import mouse
+
+    def on_click(x, y, button, pressed):
+        global _win_clicks
+        if button == mouse.Button.left and not pressed:
+            _win_clicks += 1
+
+    mouse.Listener(on_click=on_click, daemon=True).start()
+
+
 def _click_count():
     """System-wide count of left-button releases, real or from the gesture
     backend. Reading it needs no extra permission."""
+    if sys.platform == "win32":
+        return _win_clicks
     if sys.platform != "darwin":
         return 0
     try:
@@ -530,6 +574,9 @@ def _click_count():
 
 
 def _we_are_frontmost():
+    if sys.platform == "win32":
+        from ..caret_win import foreground_window
+        return foreground_window()[1] == os.getpid()
     if sys.platform != "darwin":
         return False
     try:
@@ -541,6 +588,13 @@ def _we_are_frontmost():
 
 
 def _activate(app):
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.user32.SetForegroundWindow(app)
+        except Exception:
+            pass
+        return
     try:
         from AppKit import NSApplicationActivateIgnoringOtherApps
         app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)

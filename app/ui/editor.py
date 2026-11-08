@@ -8,8 +8,8 @@ from PIL import ImageTk
 
 from ..actions import ACTIONS
 from ..gestures import PRESET_GESTURES, Gesture
-from ..icons import render, save_snapshot
-from ..profiles import ROOT, Mapping
+from ..icons import render
+from ..profiles import Mapping
 
 COUNTDOWN_S = 3        # "get ready" countdown before recording starts
 RECORD_S = 4           # how long the pose is recorded
@@ -42,9 +42,6 @@ class MappingEditor(tk.Toplevel):
 
         current = controller.profile.mapping_for(action_id)
         self.gesture = current.gesture if current else PRESET_GESTURES[0][1]
-        self.image_path = current.image if current else None
-        self._recorded_frame = None
-        self._recorded_bbox = None
         self._samples = []
         self._recording = False
         self._photo = None
@@ -138,8 +135,6 @@ class MappingEditor(tk.Toplevel):
         if name == CUSTOM:
             return
         self.gesture = dict(PRESET_GESTURES)[name]
-        self.image_path = None
-        self._recorded_frame = None
         self._show_preview()
 
     def _show_preview(self):
@@ -158,7 +153,6 @@ class MappingEditor(tk.Toplevel):
         import time
         self._recording = True
         self._samples = []
-        self._frames = {}            # pose -> (raw_frame, bbox), one per pose seen
         self._t0 = time.monotonic()
         self.c.suspend(True)         # gestures must not click things while we record
         self.record_btn.configure(text="Stop")
@@ -194,7 +188,6 @@ class MappingEditor(tk.Toplevel):
             rec = elapsed - COUNTDOWN_S
             if pose is not None:
                 self._samples.append(pose)
-                self._frames.setdefault(pose, (s["raw_frame"], f.bbox))
             left = max(0.0, RECORD_S - rec)
             self.record_status.configure(
                 text=f"Recording, hold the pose...  {left:.0f}s" if pose else "Recording, no hand in view",
@@ -216,8 +209,6 @@ class MappingEditor(tk.Toplevel):
         if pinch:
             fingers = "*****"
         self.gesture = Gesture(fingers, pinch, orientation if orientation != "up" else "any")
-        self._recorded_frame, self._recorded_bbox = self._frames[pose]
-        self.image_path = self.c.snapshot_path(self.action.id)
         self._select_preset_for(self.gesture)
         steady = count / len(self._samples)
         msg = "Captured. Press Save to keep it."
@@ -255,13 +246,7 @@ class MappingEditor(tk.Toplevel):
                     parent=self):
                 return
             replace = True
-        image = None
-        if self._recorded_frame is not None and self.image_path:
-            save_snapshot(self._recorded_frame, self._recorded_bbox, ROOT / self.image_path)
-            image = self.image_path
-        elif self.image_path and (ROOT / self.image_path).exists():
-            image = self.image_path
-        self.c.set_mapping(Mapping(self.action.id, self.gesture, hold, image), replace_conflict=replace)
+        self.c.set_mapping(Mapping(self.action.id, self.gesture, hold), replace_conflict=replace)
         self.destroy()
 
     def _clear(self):

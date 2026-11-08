@@ -1,12 +1,18 @@
-"""Find the focused text field and its text cursor through the macOS Accessibility API.
+"""Find the focused text field and its text cursor.
 
-Returns None when nothing editable has focus, or off macOS. Needs the
-Accessibility permission (already required for pyautogui to click and type).
+macOS: the Accessibility API (needs the Accessibility permission, which
+pyautogui already requires). Windows: UI Automation, in caret_win.py.
+Returns None when nothing editable has focus, or on other platforms.
 """
 
 import os
 import sys
 import time
+
+if sys.platform == "win32":
+    from . import caret_win as _win
+else:
+    _win = None
 
 TEXT_ROLES = {"AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"}
 MIN_LINE_HEIGHT = 6   # Chrome sometimes reports a 1 pt line at a bogus spot
@@ -24,6 +30,8 @@ def focused_text_caret():
 def focused_text_field(retry=True):
     """(element, caret) for the focused text field in another app, or None.
     `caret` is as described in focused_text_caret."""
+    if _win:
+        return _win.focused_text_field(retry)
     if sys.platform != "darwin":
         return None
     try:
@@ -63,6 +71,8 @@ def document_frame(el):
     on the focused control. The control is a hidden field; the page under the
     click is the document.
     """
+    if _win:
+        return _win.document_frame(el)
     if el is None or sys.platform != "darwin":
         return None
     try:
@@ -92,6 +102,8 @@ def field_frame(el):
     Same top-left point space as the caret rect. Used to tell a click in the
     field from a click somewhere else while the field still has focus.
     """
+    if _win:
+        return _win.field_frame(el)
     if el is None or sys.platform != "darwin":
         return None
     try:
@@ -111,6 +123,8 @@ def field_frame(el):
 
 def text_length(el):
     """Number of characters in a text field, or None if it will not say."""
+    if _win:
+        return _win.text_length(el)
     try:
         import ApplicationServices as AS
     except Exception:
@@ -184,6 +198,8 @@ def _editable_ancestor(AS, el):
 
 def is_text_control(el):
     """True for a real text field, not a web page that merely contains one."""
+    if _win:
+        return _win.is_text_control(el)
     if el is None or sys.platform != "darwin":
         return False
     try:
@@ -191,6 +207,13 @@ def is_text_control(el):
     except Exception:
         return False
     return _attr(AS, el, "AXRole") in TEXT_ROLES
+
+
+def same_element(a, b):
+    """Whether two focused-field handles refer to the same control."""
+    if _win:
+        return _win.same_element(a, b)
+    return a == b
 
 
 def _document_host(AS, el):

@@ -93,14 +93,6 @@ class Controller:
             self.engine.refresh_profile()
         self._notify("profile")
 
-    def snapshot_path(self, action_id: str) -> str:
-        """Path for a recorded gesture image, relative to the repo root when possible."""
-        path = self.store.dir / "images" / f"{self.profile.id}_{action_id}.png"
-        try:
-            return str(path.relative_to(ROOT))
-        except ValueError:
-            return str(path)
-
     # gesture control on/off
     def set_paused(self, paused: bool):
         self.paused = paused

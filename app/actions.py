@@ -66,10 +66,51 @@ class Backend:
     def start_dictate(self) -> bool: return False
     def stop_dictate(self): ...
     def screen_size(self) -> tuple[int, int]: return (1920, 1080)
+    def set_own_targets(self, rects): ...
+    def target_at(self, x, y):
+        """Screen rect (x, y, w, h) of a button-like control under the point, or None."""
+        return None
     # window carrying (optional): return False if unsupported, the engine then drags instead
     def grab_window_at(self, x: int, y: int) -> bool: return False
     def move_grabbed_window(self, dx: int, dy: int): ...
     def release_window(self): ...
+
+
+class _TargetLookup:
+    """Asks UI Automation what is under a point on its own thread: a lookup takes
+    20-40 ms, too long for the camera loop to wait on. The answer for the most recent
+    point is handed back on the next request near it."""
+    NEAR_PX = 40
+    FRESH_S = 0.4
+
+    def __init__(self):
+        self._pending = None
+        self._result = None          # (x, y, rect, time)
+        self._wake = threading.Event()
+        self._lock = threading.Lock()
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def request(self, x, y):
+        with self._lock:
+            self._pending = (x, y)
+            r = self._result
+        self._wake.set()
+        if r and abs(r[0] - x) <= self.NEAR_PX and abs(r[1] - y) <= self.NEAR_PX                 and time.monotonic() - r[3] <= self.FRESH_S:
+            return r[2]
+        return None
+
+    def _run(self):
+        from .caret_win import clickable_at
+        while True:
+            self._wake.wait()
+            self._wake.clear()
+            with self._lock:
+                point, self._pending = self._pending, None
+            if point is None:
+                continue
+            rect = clickable_at(*point)
+            with self._lock:
+                self._result = (point[0], point[1], rect, time.monotonic())
 
 
 class PyAutoGuiBackend(Backend):
@@ -97,6 +138,22 @@ class PyAutoGuiBackend(Backend):
 
     def screen_size(self):
         return self._gui.size()
+
+    # clickable targets, for the magnetic cursor
+    def set_own_targets(self, rects):
+        """Rects of this app's own buttons and switches; UI Automation cannot see inside Tk."""
+        self._own_targets = list(rects)
+
+    def target_at(self, x, y):
+        inside = [r for r in getattr(self, "_own_targets", ())
+                  if r[0] <= x < r[0] + r[2] and r[1] <= y < r[1] + r[3]]
+        if inside:
+            return min(inside, key=lambda r: r[2] * r[3])
+        if sys.platform == "win32":
+            if not hasattr(self, "_lookup"):
+                self._lookup = _TargetLookup()
+            return self._lookup.request(x, y)
+        return None
 
     def move_to(self, x, y):
         self._gui.moveTo(x, y)

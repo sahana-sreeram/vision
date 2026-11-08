@@ -337,3 +337,70 @@ def test_window_hold_survives_brief_detection_dropouts():
     e.update(feat("01000"), 0.5)                   # really let go: grace runs out
     e.update(feat("01000"), 0.9)
     assert b.grabbed == "released"
+
+
+def test_slow_pinch_locks_and_rewinds_to_where_it_began():
+    import dataclasses
+    e, b = make_engine()
+    e.hover_lock = False
+
+    def frame(center, gap):
+        return dataclasses.replace(feat("01000", center=center), pinch_gap=gap, gaps=(gap, 1.0, 1.0, 1.0))
+
+    pos = {}
+    for i, t in enumerate([0.0, 0.1, 0.2, 0.3]):
+        e.update(frame((200 + i * 40, 240), 0.60), t)
+        pos[t] = b.pos
+    # the thumb and index close slowly over 300 ms while the tip keeps drifting
+    for i, gap in enumerate([0.56, 0.52, 0.47]):
+        t = 0.4 + i * 0.1
+        e.update(frame((340 + i * 20, 240), gap), t)
+        pos[t] = b.pos
+    assert e._lock is not None
+    # x is mirrored on screen: earlier (smaller camera x) means a larger screen x.
+    # The cursor went back to where it was while the gap was still open (t = 0.3),
+    # not just 150 ms before the lock.
+    assert b.pos[0] > pos[0.5][0]
+    assert b.pos[0] <= pos[0.2][0]
+
+
+def cam(e, sx, sy):
+    """Hand centre that puts the index fingertip on screen point (sx, sy); x is mirrored."""
+    f0 = feat("01000", center=(320, 240))
+    dx, dy = f0.pointer[0] - 320, f0.pointer[1] - 240
+    return (e.margin + (e.screen_w - sx) / e.screen_w * (e.frame_w - 2 * e.margin) - dx,
+            e.margin + sy / e.screen_h * (e.frame_h - 2 * e.margin) - dy)
+
+
+def test_cursor_snaps_onto_small_controls_and_stays_until_the_finger_leaves():
+    e, b = make_engine()
+    e.hover_lock = False
+    button = (1000, 500, 100, 40)
+    b.target_at = lambda x, y: button if 1000 <= x < 1100 and 500 <= y < 540 else None
+    e.update(feat("01000", center=cam(e, 700, 300)), 0.0)
+    e.update(feat("01000", center=cam(e, 1010, 510)), 0.2)   # finger arrives over the button
+    assert b.pos == (1050.0, 520.0)                           # cursor sits on its centre
+    e.update(feat("01000", center=cam(e, 1090, 535)), 0.3)   # wobble inside: stays put
+    e.update(feat("01000", center=cam(e, 1115, 535)), 0.4)   # just past the edge: still held
+    assert b.pos == (1050.0, 520.0)
+    e.update(feat("01000", center=cam(e, 1300, 535)), 0.5)   # clearly away: moves again
+    e.update(feat("01000", center=cam(e, 1300, 535)), 0.7)
+    assert b.pos != (1050.0, 520.0)
+
+
+def test_click_on_a_snapped_control_does_not_rewind_off_it():
+    import dataclasses
+    e, b = make_engine()
+    e.hover_lock = False
+    button = (1000, 500, 100, 40)
+    b.target_at = lambda x, y: button if 1000 <= x < 1100 and 500 <= y < 540 else None
+    for i, t in enumerate([0.0, 0.1, 0.2]):
+        e.update(feat("01000", center=cam(e, 600 + i * 100, 300)), t)
+    e.update(feat("01000", center=cam(e, 1020, 520)), 0.3)
+    assert b.pos == (1050.0, 520.0)
+    closing = dataclasses.replace(feat("01000", center=cam(e, 1020, 520)), pinch_gap=0.4)
+    e.update(closing, 0.35)
+    assert b.pos == (1050.0, 520.0)
+    e.update(feat("11111", pinch="index", center=cam(e, 1020, 520)), 0.4)
+    e.update(feat("11111", pinch="index", center=cam(e, 1020, 520)), 0.45)
+    assert b.events == ["down"] and b.pos == (1050.0, 520.0)
