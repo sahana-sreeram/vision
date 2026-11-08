@@ -4,11 +4,10 @@ import sys
 
 from .actions import PyAutoGuiBackend
 from .engine import Engine
-from .profiles import ROOT, Mapping, Profile, ProfileStore
+from .profiles import Mapping, Profile, ProfileStore
 from .worker import Worker
 
 HOTKEY = "<ctrl>+<alt>+g"
-HOTKEY_LABEL = "Ctrl+Alt+G"
 PROFILE_ID = "default"
 
 

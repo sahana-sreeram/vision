@@ -9,7 +9,6 @@ CONTINUOUS, ONESHOT, BUTTON = "continuous", "oneshot", "button"
 
 SCROLL_STEP = 60
 SCROLL_INTERVAL = 0.1      # seconds between scroll steps while held
-TYPE_INTERVAL = 0.01       # seconds between keystrokes when typing dictated text
 WHISPER_MODEL = "base"     # local faster-whisper model; downloaded on first dictate
 LIVE_RATE = 16000
 LIVE_CHUNK_SECONDS = 1.2   # transcribe about this often so words appear while you speak
@@ -62,7 +61,6 @@ class Backend:
     speech_available = False
     dictation_state = "idle"
 
-    def dictate(self): ...
     def start_dictate(self) -> bool: return False
     def stop_dictate(self): ...
     def screen_size(self) -> tuple[int, int]: return (1920, 1080)
@@ -130,8 +128,7 @@ class PyAutoGuiBackend(Backend):
             from faster_whisper import WhisperModel
             self._sr = sr
             self._WhisperModel = WhisperModel
-            self._recognizer = sr.Recognizer()
-            self._mic = sr.Microphone()
+            sr.Microphone()  # raises if PyAudio or a microphone is missing
             self.speech_available = True
         except Exception as e:  # missing PyAudio, no microphone, or no Whisper
             self.speech_error = str(e)
@@ -223,9 +220,6 @@ class PyAutoGuiBackend(Backend):
     @property
     def listening(self):
         return self._dictation_state != "idle"
-
-    def dictate(self):
-        self.start_dictate()
 
     def start_dictate(self) -> bool:
         if not self.speech_available or self._dictation_state != "idle":

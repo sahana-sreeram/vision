@@ -18,18 +18,11 @@ TEXT_ROLES = {"AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"}
 MIN_LINE_HEIGHT = 6   # Chrome sometimes reports a 1 pt line at a bogus spot
 
 
-def focused_text_caret():
-    """Screen rect (x, y, w, h), top-left origin in points, of the text cursor,
-    falling back to the text field's own frame. FIELD_WITHOUT_POSITION if a
-    text field has focus but reports no usable position. None if no text field
-    has focus."""
-    field = focused_text_field()
-    return None if field is None else field[1]
-
-
 def focused_text_field(retry=True):
     """(element, caret) for the focused text field in another app, or None.
-    `caret` is as described in focused_text_caret."""
+    `caret` is the screen rect (x, y, w, h), top-left origin in points, of the
+    text cursor, falling back to the field's own frame, or FIELD_WITHOUT_POSITION
+    if the field reports no usable position."""
     if _win:
         return _win.focused_text_field(retry)
     if sys.platform != "darwin":

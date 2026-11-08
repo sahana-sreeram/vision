@@ -5,8 +5,7 @@ from tkinter import messagebox, ttk
 
 from PIL import Image, ImageDraw, ImageTk
 
-from ..actions import ACTIONS, TOGGLE_ACTION
-from ..controller import HOTKEY_LABEL
+from ..actions import ACTIONS
 from ..icons import icon_for, tray_image
 from .editor import MappingEditor
 
@@ -88,10 +87,6 @@ class Pane(tk.Tk):
         inner.pack(fill="both", expand=True)
         outer.inner = inner
         return outer
-
-    def _section(self, parent, text):
-        tk.Label(parent, text=text.upper(), bg=BG, fg=FAINT, anchor="w",
-                 font=(FONT, 8, "bold")).pack(fill="x", padx=self._pad(14), pady=(self._pad(12), self._pad(4)))
 
     def _switch_row(self, parent, title, command, first=False):
         """One line of the switches card: title on the left, switch on the right."""
@@ -185,7 +180,7 @@ class Pane(tk.Tk):
             if self._show_unassigned:
                 actions += unassigned
             n = len(unassigned)
-            label = (f"Hide unassigned actions" if self._show_unassigned
+            label = ("Hide unassigned actions" if self._show_unassigned
                      else f"{n} unassigned action{'s' if n != 1 else ''}  ·  show")
         for action in actions:
             mapping = profile.mapping_for(action.id)

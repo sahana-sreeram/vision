@@ -33,9 +33,6 @@ class FakeBackend(Backend):
     def scroll(self, amount):
         self.events.append(f"scroll:{amount}")
 
-    def dictate(self):
-        self.events.append("dictate")
-
 
 def feat(pattern, pinch=None, orientation="up", center=(320, 240)):
     return features.extract(landmarks(pattern, pinch=pinch, orientation=orientation, center=center))

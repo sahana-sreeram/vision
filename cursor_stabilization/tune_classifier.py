@@ -2,7 +2,6 @@
 import argparse
 import json
 from pathlib import Path
-import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report
 from sklearn.model_selection import GroupKFold, cross_val_predict

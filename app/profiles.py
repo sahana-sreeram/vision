@@ -10,7 +10,6 @@ from .gestures import Gesture
 
 ROOT = Path(__file__).resolve().parent.parent
 PROFILES_DIR = ROOT / "profiles"
-IMAGES_DIR = PROFILES_DIR / "images"
 SETTINGS_FILE = ROOT / "settings.json"
 
 

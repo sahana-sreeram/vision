@@ -108,10 +108,10 @@ class Magnifier:
 
 
 class MacMagnifier:
-    """Wraps the AppKit magnifier from magnifier.py (centred on the cursor, excluded from capture)."""
+    """Wraps the AppKit magnifier from mac_magnifier.py (centred on the cursor, excluded from capture)."""
 
     def __init__(self, root: tk.Tk, enabled: bool = False):
-        from magnifier import ScreenMagnifier  # repo root, macOS only
+        from .mac_magnifier import ScreenMagnifier  # macOS only
         self.root = root
         self._cls = ScreenMagnifier
         self._mag = None

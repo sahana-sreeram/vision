@@ -24,10 +24,8 @@ CLICK_POLL_MS = 25        # how often to check for a new click; reading the coun
 FAST_WATCH_MS = 40        # re-check this often after a click until the bubble is up
 CLICK_GRACE = 1.5         # Google Docs moves focus a moment after the click
 ARM_DELAY = 0.4           # the second click of a double-click must not start dictation
-CARET_GAP = 6
 POINTER_HALF = 10         # half the height of the I-beam pointer, so the card clears it
 NEAR_POINTER = 64         # caret this close to the click is the one that click just placed
-TAIL_W, TAIL_H = 16, 8
 TOP_MARGIN = 46           # clears the menu bar
 
 # Windows has no transparent colour; a key colour is made see-through with -transparentcolor.
@@ -123,7 +121,6 @@ class Floating(tk.Toplevel):
         self.canvas = tk.Canvas(self, width=self.width, height=self.height, bg=CLEAR,
                                 highlightthickness=0, bd=0)
         self.canvas.pack()
-        self.family = _family()
 
     def show_at(self, x, y):
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
@@ -334,7 +331,6 @@ class DictationUI:
         self._target_app = None
         self._card_field = None    # text field the open card belongs to
         self._card_chars = None    # its length when the card opened; typing closes the card
-        self._last_field = None    # text field seen on the previous watch
         self._watching = False     # becomes True after the first watch, so startup does not prompt
         self._clicks = _click_count()
         self._click_at = None      # time of a click not yet matched to a text field
@@ -419,7 +415,6 @@ class DictationUI:
                     and not self.c.paused and element is not None):
                 self._target_app = _frontmost_app()
                 self._open_card(element, anchor)
-            self._last_field = element
             self._watching = True
         finally:
             if self._watch_job is None:

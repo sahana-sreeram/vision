@@ -4,7 +4,7 @@ import numpy as np
 import pyautogui
 import time
 import speech_recognition as sr
-from magnifier import ScreenMagnifier
+from app.ui.mac_magnifier import ScreenMagnifier
 from cursor_stabilization import OneEuroFilter
 from cursor_stabilization.cursor_state import CursorState
 from cursor_stabilization.adaptive_smoothing import AdaptiveSmoothing

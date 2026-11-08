@@ -199,7 +199,6 @@ class MappingEditor(tk.Toplevel):
         self.after(SAMPLE_MS, self._record_tick)
 
     def _finish_record(self):
-        from collections import Counter
         if len(self._samples) < RECORD_S * 1000 / SAMPLE_MS * 0.4:
             self._stop_record("Not enough of your hand in view. Try again.")
             self.record_status.configure(fg=RED)

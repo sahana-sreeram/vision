@@ -220,7 +220,7 @@ def _text_pattern_caret(el):
             rects = rng.GetBoundingRectangles()
         if not rects or len(rects) < 4:
             return None
-        x, y, _w, h = rects[0], rects[1], rects[2], rects[3]
+        x, y, h = rects[0], rects[1], rects[3]
         return (x, y, 2, h) if h > 0 else None
     except Exception:
         return None
